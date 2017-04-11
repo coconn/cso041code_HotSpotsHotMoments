@@ -1,7 +1,7 @@
 # hotspotshotmoments-timeseries-figures.R
 # 
 # making the figures for the hot spots and hot moments paper
-# currently an exploratory analyses script
+# specifically, making the time series figures to check out the state of the data
 #
 # O2 - redox - GHG project
 # CS O'Connell, UCB, Silver Lab
@@ -28,13 +28,155 @@ library(xlsx)
 #library(strucchange) # piecewise regression
 library(reshape2)
 library(dplyr)
+library(plyr)
 
 # summarySE using plyr
 source("~/Documents/GITHUB/RPersonalFunctionsChristine/summarySE.r")
 
 # where to save outputs
-pathsavefigs = "~/Documents/GITHUB/cso044code_HotSpotsHotMoments/HotSpotsHotMoments-Figures/"
-pathdata = "~/Documents/GITHUB/cso044code_HotSpotsHotMoments/"
+pathsavefigs = "~/Documents/GITHUB/cso041code_HotSpotsHotMoments/HotSpotsHotMomentsAnalysis/HotSpotsHotMoments-Figures-Analyses/"
+pathdata = "~/Documents/GITHUB/cso041code_HotSpotsHotMoments/"
+pathrainfalldata = "~/Documents/GITHUB/cso040code_ArrayGHG/ArrayGHG-Data-Raw/Rainfall-data-Ryan/"
+pathdroughtpaperfiles = "~/Documents/GITHUB/cso040code_ArrayGHG/ArrayGHG-Data-Rprocessed/"
+
+
+########################################################################
+# RAINFALL TIME SERIES FIGURES
+
+# load csv
+rainfalldf <- read.csv(paste(pathrainfalldata, "elverde_rainfall_master.csv", sep = ""), stringsAsFactors=FALSE)
+
+# deal with dates and year
+rainfalldf$MonthDay <- substr(rainfalldf$Date, 1, nchar(rainfalldf$Date)-3)
+rainfalldf$Date <- mdy(rainfalldf$Date)
+rainfalldf$Year <- as.factor(rainfalldf$Year)
+
+# subset out just the dates since 11/14/14 (first date of the sensor data)
+rainfallstudypd <- subset(rainfalldf, rainfalldf$Date>"2014-11-13")
+# note that there is a weird anomoly, but it seems legit: on 2014-12-16, rainfall is recorded as 147.32 mm in a day, but there is a note that says "rainstorm"
+# # cumulative rainfall for the jan to jan year
+# rainfallstudypd_365 <- subset(rainfalldf, rainfalldf$Date>"2014-12-31" & rainfalldf$Date<="2015-12-31")
+# rainfallstudypd_365 <- within(rainfallstudypd_365, acc_sum <- cumsum(Rainfall_mm))
+
+# rainfall by date (study period)
+p0 <- ggplot(rainfallstudypd, aes(x=Date, y=Rainfall_mm)) + geom_bar(stat = "identity") + ylab("Daily Rainfall \n(mm)") + theme_bw() + ylim(0.0,50) + theme(axis.text.x=element_text(angle=90)) + scale_x_datetime(breaks = date_breaks("4 weeks"), labels = date_format("%Y-%m-%d"), limits = ymd(c('2014-11-01','2017-02-28')))
+
+# save figure
+png(file = paste(pathsavefigs, "time_series_rainfall_hotspotshotmoments.png", sep=""),width=14,height=7,units="in",res=400)
+p0
+dev.off()
+
+# subset out the years that you want to use as the daily anomaly comparison
+rainfallpast <- subset(rainfalldf, rainfalldf$Date>="2004-01-01" & rainfalldf$Date<="2013-12-31")
+rainfallpast$MonthDay2 <- parse_date_time(rainfallpast$MonthDay, "md")
+
+# get average of those ten years for each day
+summarytabraincomp <- summarySE(data=rainfallpast, measurevar="Rainfall_mm", c("MonthDay2"), na.rm=TRUE, renameallcols=TRUE) 
+# cumulative rainfall for the year
+summarytabraincomp <- within(summarytabraincomp, acc_sum <- cumsum(meanRainfall_mm))
+
+# rainfall by date (comparison time period)
+p0c <- ggplot(summarytabraincomp, aes(x=MonthDay2, y=meanRainfall_mm)) + geom_bar(stat = "identity") + ylab("Daily Precipitation (mm) \n2004-2013 Mean") + theme_bw() + scale_x_datetime(labels = date_format("%b-%d")) + ylim(0.0,50) 
+
+# calculate the difference between the mean for each day and the date in question
+str(rainfallstudypd) # Date, Rainfall_mm # this is the ongoing time period
+str(summarytabraincomp) # MonthDay2, meanRainfall_mm
+
+# add a character variable that we'll use to merge
+rainfallstudypd$datemerge <- substring(as.character(rainfallstudypd$Date), 6)
+summarytabraincomp$datemerge <- substring(as.character(summarytabraincomp$MonthDay2), 6)
+
+# merge datasets
+rainfalldeviation <- merge(rainfallstudypd,summarytabraincomp,by="datemerge")
+# define difference column
+rainfalldeviation$diff <- rainfalldeviation$Rainfall_mm - rainfalldeviation$meanRainfall_mm
+
+# rainfall by date (comparison time period)
+p0d <- ggplot(rainfalldeviation, aes(x=Date, y=diff)) + geom_bar(stat = "identity", aes(fill = diff>0), position="dodge") + ylab("Daily Precipitation Anomaly (mm) \nStudy Period vs. 2004-13 Mean") + theme_bw() + theme(legend.position="none") + scale_fill_manual(values=c("red3", "grey25")) + theme(panel.border = element_blank(), panel.grid.major = element_blank(), panel.grid.minor = element_blank(), axis.line = element_line(colour = "black")) + geom_vline(xintercept=as.numeric(rainfalldeviation$Date[168]), linetype=2) # drought paper ended at 2016-02-25, hence vertical line  #+ scale_x_datetime(labels = date_format("%b-%d")) + geom_vline(xintercept=as.numeric(rainfalldeviation$Date[116]), linetype=2) + geom_vline(xintercept=as.numeric(rainfalldeviation$Date[237]), linetype=2) + geom_vline(xintercept=as.numeric(rainfalldeviation$Date[329]), linetype=2) 
+
+# save figure
+png(file = paste(pathsavefigs, "time_series_rainfall_anomaly_hotspotshotmoments.png", sep=""),width=14,height=7,units="in",res=400)
+p0d
+dev.off()
+
+# what are the really large anomalies?
+ht(sort(rainfalldeviation$diff))
+ht(sort(rainfallstudypd$Rainfall_mm))
+tmp <- which(grepl(147.32, rainfallstudypd$Rainfall_mm))
+rainfallstudypd[tmp,]
+tmp2 <- which(grepl(114.3, rainfallstudypd$Rainfall_mm))
+rainfallstudypd[tmp2,]
+
+# post drought paper, is there a net anomaly?
+postdrought <- rainfalldeviation[rainfalldeviation$Date>"2016-02-25",]
+sum(postdrought$diff)
+sum(postdrought$diff)/dim(postdrought)[1]
+# sum(postdrought$diff)
+# [1] -744.0844
+# > sum(postdrought$diff)/dim(postdrought)[1]
+# [1] -2.016489
+
+
+########################################################################
+# MOISTURE TIME SERIES FIGURES
+
+# write.csv(summarytab2, file=paste(pathdroughtpaperfiles, "arraysensorsdf_moisturedailysummarystats_finalpaperdataset_4-11-2017.csv", sep = ""), row.names=FALSE)
+
+
+
+
+
+
+
+
+
+
+
+
+
+########################################################################
+# THINGS TO IGNORE: RAINFALL CUMULATIVE CURVE
+# 
+# # cumulative rainfall graphs onto the same plot
+# # get both datasets into same df
+# 
+# # reference data
+# summarytabraincomp$DateJoin <- as.character(summarytabraincomp$MonthDay2)
+# summarytabraincomp$DateJoin2 <- substr(summarytabraincomp$DateJoin, 6, nchar(summarytabraincomp$DateJoin))
+# 
+# # our study data
+# rainfallstudypd_365$DateJoin <- as.character(rainfallstudypd_365$Date)
+# rainfallstudypd_365$DateJoin2 <- substr(rainfallstudypd_365$DateJoin, 6, nchar(rainfallstudypd_365$DateJoin))
+# rainfallstudypd_365_tojoin <- rainfallstudypd_365[,c(4,7,9)]
+# names(rainfallstudypd_365_tojoin) <- c("Rainfall_mm_studypd","acc_sum_studypd","DateJoin2")
+# 
+# # join study onto reference
+# summarytabraincomp <- full_join(summarytabraincomp, rainfallstudypd_365_tojoin, by="DateJoin2")
+# 
+# # cumulative rainfall, reference period and study year
+# p0f <- ggplot(summarytabraincomp) + geom_ribbon(aes(x=MonthDay2, ymin=acc_sum-sdRainfall_mm, ymax=acc_sum+sdRainfall_mm), alpha=0.5) + geom_line(aes(x=MonthDay2, y=acc_sum)) + ylab("Cumulative Precipitation (mm) \n2004-2013 vs. 2015") + theme_bw() + scale_x_datetime(labels = date_format("%b-%d"), name="") + geom_line(aes(x=MonthDay2, y=acc_sum_studypd), linetype=3)
+# 
+# # save figure
+# png(file = paste(pathsavefigs, "cumulativerain_comparison.png", sep=""),width=8,height=5,units="in",res=400)
+# p0f
+# dev.off()
+# ### why can't I get a legend working on this graph???
+
+
+########################################################################
+# RAINFALL STATS AND NUMBERS REPORTING
+
+rainfallpast_totmm$tot[rainfallpast_totmm$Year=="2004-13"]
+rainfallpast_totmm$tot[rainfallpast_totmm$Year=="2015"]
+mean(rainfalldeviation$diff)
+sd(rainfalldeviation$diff)
+sum(rainfalldeviation$diff>0)
+sum(rainfalldeviation$diff<=0)
+sum(rainfalldeviation$diff>0) + sum(rainfalldeviation$diff<=0) # check you didn't double count
+
+
+
+
 
 
 ########################################################################
