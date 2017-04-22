@@ -120,6 +120,16 @@ sum(postdrought$diff)/dim(postdrought)[1]
 ########################################################################
 # MOISTURE TIME SERIES FIGURES
 
+# load csv of daily averages per topo location through 2016-02-24
+summarytab2 <- read.csv(paste(pathdroughtpaperfiles, "arraysensorsdf_moisturedailysummarystats_finalpaperdataset_4-11-2017.csv", sep = ""), stringsAsFactors=FALSE)
+
+# bring in the daily averages per sensor up to now
+
+
+
+str(summarytab2)
+
+
 # write.csv(summarytab2, file=paste(pathdroughtpaperfiles, "arraysensorsdf_moisturedailysummarystats_finalpaperdataset_4-11-2017.csv", sep = ""), row.names=FALSE)
 
 
